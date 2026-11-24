@@ -15,6 +15,9 @@ from apuestas import backtest, datos
 from apuestas.modelo import ModeloDixonColes
 from apuestas.valor import Config, buscar_valor
 
+PESO_TIROS = 0.0
+PESO_XG = 0.0
+
 pd.set_option("display.width", 200)
 pd.set_option("display.max_columns", 30)
 
@@ -27,6 +30,10 @@ def _config(a) -> Config:
         cuota_max=a.cuota_max,
         mercados=tuple(a.mercados),
     )
+
+
+def _params_modelo(a) -> dict:
+    return {"xi": a.xi, "peso_tiros": a.peso_tiros, "peso_xg": a.peso_xg}
 
 
 def cmd_valor(a):
@@ -42,7 +49,7 @@ def cmd_valor(a):
             continue
         print(f"{liga} ({datos.LIGAS.get(liga, '?')}): ajustando modelo con {temporadas}...")
         hist = datos.cargar_historico(liga, temporadas)
-        modelo = ModeloDixonColes(xi=a.xi).ajustar(hist)
+        modelo = ModeloDixonColes(**_params_modelo(a)).ajustar(hist)
         desconocidos = {e for e in pd.concat([partidos["HomeTeam"], partidos["AwayTeam"]]) if not modelo.conoce(e)}
         if desconocidos:
             print(f"  aviso: sin historial para {sorted(desconocidos)}")
@@ -77,7 +84,7 @@ def cmd_backtest(a):
     hist = datos.cargar_historico(a.liga, temporadas)
     print(f"Backtest {a.liga} | entreno desde {temporadas[0]} | test {test} | "
           f"EV≥{cfg.umbral_ev:.0%} peso_modelo={cfg.peso_modelo}")
-    ev = backtest.ejecutar(hist, test, cfg, xi=a.xi)
+    ev = backtest.ejecutar(hist, test, cfg, **_params_modelo(a))
     r = backtest.resumen(ev, cfg)
     for k, v in r.items():
         if k.startswith("logloss"):
@@ -95,7 +102,7 @@ def cmd_backtest(a):
 
 def cmd_fuerzas(a):
     hist = datos.cargar_historico(a.liga, datos.temporadas_anteriores(a.temporadas))
-    m = ModeloDixonColes(xi=a.xi).ajustar(hist)
+    m = ModeloDixonColes(**_params_modelo(a)).ajustar(hist)
     actuales = set(hist[hist["Temporada"] == hist["Temporada"].max()]["HomeTeam"])
     t = m.tabla_fuerzas()
     print(f"μ={m.mu:.3f} ventaja_local={m.ventaja_local:.3f} rho={m.rho:.3f}")
@@ -115,6 +122,10 @@ def main(argv=None):
         sp.add_argument("--mercados", nargs="+", default=["1X2", "Goles2.5"], choices=["1X2", "Goles2.5"])
         sp.add_argument("--temporadas", type=int, default=3, help="temporadas de historial")
         sp.add_argument("--xi", type=float, default=0.0019, help="decaimiento temporal por día")
+        sp.add_argument("--peso-tiros", type=float, default=PESO_TIROS,
+                        help="parte del ajuste basada en tiros a puerta en vez de goles")
+        sp.add_argument("--peso-xg", type=float, default=PESO_XG,
+                        help="parte del ajuste basada en xG (si el fichero lo trae)")
         sp.add_argument("--csv", help="guardar resultados en CSV")
 
     s = sub.add_parser("valor", help="apuestas de valor en próximos partidos")

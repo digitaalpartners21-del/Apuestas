@@ -30,7 +30,7 @@ def _gana(sel: str, gh: int, ga: int) -> bool:
 
 
 def ejecutar(historico: pd.DataFrame, temporadas_test: list[str], cfg: Config,
-             xi: float = 0.0019, reg: float = 0.5) -> pd.DataFrame:
+             **params_modelo) -> pd.DataFrame:
     """Devuelve todas las selecciones evaluadas con su resultado (columna 'Gana')."""
     test = historico[historico["Temporada"].isin(temporadas_test)]
     if test.empty:
@@ -42,7 +42,7 @@ def ejecutar(historico: pd.DataFrame, temporadas_test: list[str], cfg: Config,
         entreno = historico[historico["Date"] < inicio]
         if len(entreno) < 100:
             continue
-        modelo = ModeloDixonColes(xi=xi, reg=reg).ajustar(entreno, fecha_ref=inicio)
+        modelo = ModeloDixonColes(**params_modelo).ajustar(entreno, fecha_ref=inicio)
         partidos = test[test["Date"].dt.to_period("W-MON") == semana]
         for _, f in partidos.iterrows():
             for r in evaluar_partido(modelo, f, cfg):

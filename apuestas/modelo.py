@@ -55,13 +55,21 @@ def _tau(x, y, lh, la, rho):
 
 
 class ModeloDixonColes:
-    def __init__(self, xi: float = 0.0019, reg: float = 0.5):
+    def __init__(self, xi: float = 0.0019, reg: float = 0.5,
+                 peso_tiros: float = 0.0, peso_xg: float = 0.0):
         """
         xi:  decaimiento temporal por día (0.0019 ≈ un partido de hace un año pesa la mitad).
         reg: fuerza de la regularización L2 sobre ataque/defensa.
+        peso_tiros: parte del "rendimiento ofensivo" que se mide con tiros a puerta
+                    (convertidos a goles con la tasa de conversión de la liga) en vez
+                    de con goles reales. Los tiros son mucho menos aleatorios que los goles.
+        peso_xg:    ídem con goles esperados (xG) cuando el fichero los trae; si un
+                    partido no tiene xG, ese peso pasa a los tiros a puerta.
         """
         self.xi = xi
         self.reg = reg
+        self.peso_tiros = peso_tiros
+        self.peso_xg = peso_xg
         self.equipos: list[str] = []
         self.indice: dict[str, int] = {}
         self.mu = 0.0
@@ -83,8 +91,9 @@ class ModeloDixonColes:
 
         h = df["HomeTeam"].map(self.indice).to_numpy()
         a = df["AwayTeam"].map(self.indice).to_numpy()
-        gh = df["FTHG"].to_numpy(dtype=float)
-        ga = df["FTAG"].to_numpy(dtype=float)
+        goles_h = df["FTHG"].to_numpy(dtype=float)
+        goles_a = df["FTAG"].to_numpy(dtype=float)
+        gh, ga = self._objetivo(df, goles_h, goles_a)
         dias = (fecha_ref - df["Date"]).dt.days.to_numpy(dtype=float)
         w = np.exp(-self.xi * dias)
         self.partidos_por_equipo = (
@@ -126,13 +135,40 @@ class ModeloDixonColes:
         la = np.exp(self.mu + self.ataque[a] + self.defensa[h])
 
         def nll_rho(rho):
-            t = _tau(gh, ga, lh, la, rho)
+            t = _tau(goles_h, goles_a, lh, la, rho)
             if np.any(t <= 0):
                 return np.inf
             return -(w * np.log(t)).sum()
 
         self.rho = float(minimize_scalar(nll_rho, bounds=(-0.3, 0.3), method="bounded").x)
         return self
+
+    def _objetivo(self, df: pd.DataFrame, goles_h: np.ndarray, goles_a: np.ndarray):
+        """Mezcla de goles reales, goles "por tiros a puerta" y xG que se usa como dato a ajustar.
+
+        La log-verosimilitud Poisson admite objetivos no enteros (cuasi-Poisson),
+        así que el ajuste es el mismo; solo cambia qué se considera "lo que mereció marcar".
+        """
+        wt, wx = self.peso_tiros, self.peso_xg
+        if wt + wx <= 0:
+            return goles_h, goles_a
+
+        def col(nombre):
+            if nombre not in df.columns:
+                return np.full(len(df), np.nan)
+            return pd.to_numeric(df[nombre], errors="coerce").to_numpy(dtype=float)
+
+        sot_h, sot_a = col("HST"), col("AST")
+        xg_h, xg_a = col("HxG"), col("AxG")
+        ok = np.isfinite(sot_h) & np.isfinite(sot_a)
+        conversion = (goles_h[ok].sum() + goles_a[ok].sum()) / max(sot_h[ok].sum() + sot_a[ok].sum(), 1)
+
+        def mezcla(goles, sot, xg):
+            por_tiros = np.where(np.isfinite(sot), sot * conversion, goles)
+            con_xg = np.where(np.isfinite(xg), xg, por_tiros)
+            return (1 - wt - wx) * goles + wt * por_tiros + wx * con_xg
+
+        return mezcla(goles_h, sot_h, xg_h), mezcla(goles_a, sot_a, xg_a)
 
     # ------------------------------------------------------------ predicción
     def conoce(self, equipo: str) -> bool:
