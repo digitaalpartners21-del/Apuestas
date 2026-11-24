@@ -12,7 +12,12 @@ estadísticas**. Se construye paso a paso; este es el paso 1.
 2. **Modelo** — Dixon-Coles: cada equipo tiene una fuerza de ataque y otra de
    defensa, con ventaja de campo, corrección para marcadores bajos y más peso a
    los partidos recientes. Da la probabilidad de cada marcador y, de ahí,
-   1X2 y Más/Menos de 2,5 goles.
+   1X2 y Más/Menos de 2,5 goles. Las fuerzas no se ajustan solo con goles: por
+   defecto la mitad del ajuste usa **tiros a puerta** convertidos a goles con la
+   tasa de conversión de la liga (`--peso-tiros 0.5`), porque los tiros reflejan
+   mejor lo que un equipo "merece" que unos goles con mucha suerte. Con
+   `--peso-xg` se puede usar también el xG, que de momento solo trae la
+   temporada 2026/27.
 3. **Valor** — se compara con las cuotas. La probabilidad final mezcla modelo
    y mercado (`--peso-modelo`, 0,5 por defecto) y una apuesta se marca si
    `probabilidad × cuota − 1 ≥ EV mínimo` (5 % por defecto). Se sugiere stake
@@ -35,10 +40,41 @@ pytest
 
 Ligas: `SP1 SP2 E0 E1 E2 E3 EC I1 I2 D1 D2 F1 F2 N1 P1 B1 T1 G1 SC0 SC1`.
 
-## Estado actual (paso 1): el modelo de goles solo NO bate al mercado
+## Estado actual
 
 Backtest sobre 2024/25, 2025/26 y 2026/27 (hasta el 23/11/2026), EV ≥ 5 %,
-peso del modelo 0,5, cuota máxima del mercado:
+peso del modelo 0,5, cuota máxima del mercado. Log-loss: menor es mejor; si el
+del modelo es menor que el del mercado, el modelo predice mejor que las casas.
+
+### Paso 2: tiros a puerta (`--peso-tiros 0.5`, por defecto)
+
+| Liga | Log-loss 1X2 modelo / mercado | Log-loss Más/Menos 2,5 modelo / mercado | Apuestas | ROI | CLV medio |
+|------|------|------|---:|----:|----:|
+| SP1 | 0,972 / 0,953 | 0,680 / 0,670 | 672 | −10,7 % | −1,2 % |
+| E0  | 1,004 / 0,994 | **0,683 / 0,685** | 696 | +10,2 % | **+1,2 %** |
+| E1  | 1,046 / 1,033 | 0,696 / 0,686 | 782 | −4,3 % | −2,0 % |
+| E2  | 1,032 / 1,019 | 0,690 / 0,681 | 741 | −8,3 % | −1,6 % |
+| I2  | 1,056 / 1,042 | 0,696 / 0,687 | 452 | −13,3 % | −1,7 % |
+| SP2 | 1,040 / 1,019 | 0,693 / 0,681 | 624 | −11,0 % | −2,0 % |
+
+Comparado con usar solo goles (paso 1):
+
+- En Más/Menos 2,5 el modelo mejora en **todas** las ligas (el log-loss baja
+  entre 0,004 y 0,009), y en la Premier League ya predice mejor que el mercado.
+- En 1X2 el cambio es pequeño: mejora algo en las ligas inglesas inferiores y
+  empeora un poco en LaLiga.
+- Premier League, Más/Menos 2,5: Over con CLV +6,8 % (51 apuestas) y Under con
+  +2,4 % (98). Es decir, la cuota se movió después hacia nuestra apuesta, que es
+  la señal de que de verdad estaba mal puesta. Es la primera pista seria, pero
+  con pocas apuestas.
+- En 1X2 de la Premier el ROI de los empates (+61 %) es casi todo suerte: su
+  CLV es solo +1 %.
+- El xG (solo en 2026/27) no aporta todavía en el backtest: hay pocos partidos.
+
+En el resto de ligas el mercado sigue siendo mejor. **No usar todavía para
+apostar dinero real.**
+
+### Paso 1: solo goles (`--peso-tiros 0`)
 
 | Liga | Log-loss 1X2 modelo / mercado | Apuestas | ROI | CLV medio |
 |------|------------------------------|---------:|----:|----------:|
@@ -49,18 +85,15 @@ peso del modelo 0,5, cuota máxima del mercado:
 | I2   | 1,055 / 1,042 | 573 | −14,2 % ± 6,0 | −1,7 % |
 | SP2  | 1,041 / 1,019 | 749 | −5,0 % ± 5,6 | −2,3 % |
 
-El mercado predice mejor que un modelo basado solo en goles, y el CLV es
-negativo: la mayoría de las "apuestas de valor" que marca hoy son ruido del
-modelo, no errores de la casa. **No usar todavía para apostar dinero real.**
-
 ## Próximos pasos
 
-- [ ] Usar estadísticas más predictivas que los goles: tiros a puerta (HST/AST)
-      y xG, que ya vienen en los ficheros.
+- [x] Usar tiros a puerta (HST/AST) y xG además de goles.
 - [ ] Equipos que cambian de división (ascendidos/descendidos): cargar también
       la liga vecina para no infravalorarlos (p. ej. West Ham en la Championship).
 - [ ] Calibrar `xi`, `reg`, `peso_modelo` y umbral con el backtest por liga.
-- [ ] Filtrar solo apuestas donde el backtest dé CLV positivo (por liga/mercado).
+- [ ] Filtrar solo apuestas donde el backtest dé CLV positivo (por liga/mercado);
+      p. ej. Más/Menos 2,5 en la Premier League.
+- [ ] Probar más ligas (I1, D1, F1, N1, P1...) para ver dónde está el mercado más flojo.
 - [ ] Más mercados (hándicap asiático, ambos marcan) y otras fuentes de cuotas.
 
 > Las apuestas tienen expectativa negativa para la inmensa mayoría de la gente.

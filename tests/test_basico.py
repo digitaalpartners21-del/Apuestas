@@ -78,3 +78,17 @@ def test_temporadas():
     assert datos.temporada_actual(date(2026, 11, 24)) == "2627"
     assert datos.temporada_actual(date(2027, 3, 1)) == "2627"
     assert datos.temporadas_anteriores(3, date(2026, 11, 24)) == ["2425", "2526", "2627"]
+
+
+def test_objetivo_mezcla_tiros_y_xg():
+    df = pd.DataFrame({"HST": [6, 2], "AST": [2, 6], "HxG": [np.nan, 0.5], "AxG": [np.nan, 1.5]})
+    gh, ga = np.array([0.0, 2.0]), np.array([2.0, 0.0])
+    m = ModeloDixonColes(peso_tiros=1.0)
+    th, ta = m._objetivo(df, gh, ga)
+    # conversión de la liga = 4 goles / 16 tiros a puerta = 0.25
+    assert th.tolist() == pytest.approx([1.5, 0.5])
+    m = ModeloDixonColes(peso_tiros=0.5, peso_xg=0.5)
+    th, _ = m._objetivo(df, gh, ga)
+    # partido sin xG: el peso del xG pasa a los tiros; partido con xG: mitad tiros, mitad xG
+    assert th.tolist() == pytest.approx([1.5, 0.5 * 0.5 + 0.5 * 0.5])
+    assert ModeloDixonColes()._objetivo(df, gh, ga)[0] is gh

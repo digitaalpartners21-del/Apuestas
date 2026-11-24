@@ -15,7 +15,7 @@ from apuestas import backtest, datos
 from apuestas.modelo import ModeloDixonColes
 from apuestas.valor import Config, buscar_valor
 
-PESO_TIROS = 0.0
+PESO_TIROS = 0.5  # elegido con el backtest: mejora Más/Menos 2,5 en todas las ligas probadas
 PESO_XG = 0.0
 
 pd.set_option("display.width", 200)
